@@ -1,3 +1,9 @@
+# Project specific (stm32 etc.)
+*.mk
+*.cyclo
+Debug/*
+Release/*
+
 # Prerequisites
 *.d
 
