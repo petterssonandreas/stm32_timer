@@ -44,6 +44,8 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+ADC_HandleTypeDef hadc;
+
 TIM_HandleTypeDef htim1;
 
 UART_HandleTypeDef huart2;
@@ -86,6 +88,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM1_Init(void);
+static void MX_ADC_Init(void);
 void StartDefaultTask(void const * argument);
 void start_console_task(void const * argument);
 
@@ -129,6 +132,7 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   MX_TIM1_Init();
+  MX_ADC_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -196,9 +200,11 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_HSI14;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.HSI14State = RCC_HSI14_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.HSI14CalibrationValue = 16;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -217,6 +223,60 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief ADC Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC_Init(void)
+{
+
+  /* USER CODE BEGIN ADC_Init 0 */
+
+  /* USER CODE END ADC_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC_Init 1 */
+
+  /* USER CODE END ADC_Init 1 */
+
+  /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
+  */
+  hadc.Instance = ADC1;
+  hadc.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV1;
+  hadc.Init.Resolution = ADC_RESOLUTION_12B;
+  hadc.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc.Init.ScanConvMode = ADC_SCAN_DIRECTION_FORWARD;
+  hadc.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  hadc.Init.LowPowerAutoWait = DISABLE;
+  hadc.Init.LowPowerAutoPowerOff = DISABLE;
+  hadc.Init.ContinuousConvMode = DISABLE;
+  hadc.Init.DiscontinuousConvMode = DISABLE;
+  hadc.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+  hadc.Init.DMAContinuousRequests = DISABLE;
+  hadc.Init.Overrun = ADC_OVR_DATA_PRESERVED;
+  if (HAL_ADC_Init(&hadc) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure for the selected ADC regular channel to be converted.
+  */
+  sConfig.Channel = ADC_CHANNEL_4;
+  sConfig.Rank = ADC_RANK_CHANNEL_NUMBER;
+  sConfig.SamplingTime = ADC_SAMPLETIME_41CYCLES_5;
+  if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC_Init 2 */
+
+  /* USER CODE END ADC_Init 2 */
+
 }
 
 /**
@@ -368,6 +428,7 @@ void handle_rx_complete(void)
 {
 	char tx[16] = "";
 	int r = 0;
+	uint16_t raw;
 
 	//if (strncmp(rx_buffer, "st ", 3) == 0) {}
 	if (rx_buffer[0] == 'g' && rx_buffer[1] == 't') {
@@ -445,6 +506,29 @@ void handle_rx_complete(void)
 		HAL_UART_Transmit(&huart2, (uint8_t *)tx, 9, 1000);
 		osSemaphoreRelease(time_semHandle);
 	}
+	else if (rx_buffer[0] == 'b' && rx_buffer[1] == 'a' && rx_buffer[2] == 't') {
+
+		// Get ADC value
+		HAL_ADC_Start(&hadc);
+		HAL_ADC_PollForConversion(&hadc, 3000);
+		raw = HAL_ADC_GetValue(&hadc);
+
+		// Convert to string and print
+
+		// Take x(3300 / 4096) to get mV
+		// Take x2 to get the battery voltage (have divider by with 100k and 100k, to be inside of 3.3V)
+
+		uint32_t val = ((uint32_t)raw * 3300 * 2) / 4095;
+
+
+		snprintf(tx, sizeof(tx), "raw: %hu\n", raw);
+		HAL_UART_Transmit(&huart2, (uint8_t*)tx, strlen(tx), 1000);
+		snprintf(tx, sizeof(tx), "vol: %lu mV\n", val);
+				HAL_UART_Transmit(&huart2, (uint8_t*)tx, strlen(tx), 1000);
+		HAL_ADC_Stop(&hadc);
+	}
+
+
 	/*
 	else if (rx_buffer[0]) {
 
